@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Sudoku</title>
+<meta name="theme-color" content="#f4efe6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#16181d" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Sudoku">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<style>
+  :root {
+    --bg: #f4efe6;
+    --surface: #fffdf8;
+    --ink: #22252b;
+    --muted: #7b7f88;
+    --line: #d6d0c4;
+    --accent: #2f5bd3;
+    --accent-ink: #ffffff;
+    --given: #22252b;
+    --entry: #2f5bd3;
+    --peer: #ece6d9;
+    --same: #d5e0fb;
+    --selected: #b9cbf7;
+    --conflict: #d23c3c;
+    --conflict-bg: #f8dcdc;
+    --btn: #ebe5d8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181d;
+      --surface: #1e2128;
+      --ink: #e6e8ec;
+      --muted: #8c919c;
+      --line: #343844;
+      --accent: #6f93ff;
+      --accent-ink: #0d1020;
+      --given: #e6e8ec;
+      --entry: #8eaaff;
+      --peer: #252935;
+      --same: #2c3a63;
+      --selected: #3a4d86;
+      --conflict: #ff6b6b;
+      --conflict-bg: #4a2328;
+      --btn: #262a33;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    user-select: none; -webkit-user-select: none;
+    touch-action: manipulation;
+    display: flex; justify-content: center;
+    padding: max(12px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  }
+  .app { width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 14px; margin: auto 0; }
+
+  header { display: flex; align-items: center; justify-content: space-between; }
+  .meta { display: flex; gap: 14px; align-items: baseline; }
+  .diff { font-weight: 650; font-size: 17px; text-transform: capitalize; }
+  .timer { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 15px; }
+  .new-btn {
+    border: 0; background: var(--btn); color: var(--ink);
+    font: inherit; font-size: 15px; font-weight: 600;
+    padding: 8px 14px; border-radius: 10px; cursor: pointer;
+  }
+
+  .board {
+    display: grid; grid-template-columns: repeat(9, 1fr);
+    aspect-ratio: 1; width: 100%;
+    background: var(--surface);
+    border: 2px solid var(--ink); border-radius: 6px; overflow: hidden;
+  }
+  .cell {
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+    border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+    font-size: clamp(20px, 6.4vw, 30px); font-variant-numeric: tabular-nums;
+    color: var(--entry); cursor: pointer;
+  }
+  .cell.c9 { border-right: none; }
+  .cell.r9 { border-bottom: none; }
+  .cell.bx { border-right: 2px solid var(--ink); }
+  .cell.by { border-bottom: 2px solid var(--ink); }
+  .cell.given { color: var(--given); font-weight: 600; }
+  .cell.peer { background: var(--peer); }
+  .cell.same { background: var(--same); }
+  .cell.selected { background: var(--selected); }
+  .cell.conflict { color: var(--conflict); }
+  .cell.conflict:not(.selected) { background: var(--conflict-bg); }
+  .cell.hinted { font-style: italic; }
+  .notes {
+    position: absolute; inset: 2px;
+    display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+    font-size: clamp(8px, 2.4vw, 11px); color: var(--muted); font-weight: 500;
+  }
+  .notes span { display: flex; align-items: center; justify-content: center; }
+  .notes span.hl { color: var(--accent); font-weight: 700; }
+
+  .tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .tool {
+    border: 0; background: transparent; color: var(--ink);
+    font: inherit; font-size: 12px; font-weight: 600;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 6px 0; border-radius: 10px; cursor: pointer;
+  }
+  .tool svg { width: 24px; height: 24px; }
+  .tool .badge {
+    font-size: 10px; padding: 1px 6px; border-radius: 6px;
+    background: var(--btn); color: var(--muted);
+  }
+  .tool.on .badge { background: var(--accent); color: var(--accent-ink); }
+  .tool.on { color: var(--accent); }
+
+  .pad { display: grid; grid-template-columns: repeat(9, 1fr); gap: 6px; }
+  .num {
+    border: 0; background: var(--btn); color: var(--accent);
+    font: inherit; font-size: clamp(22px, 7vw, 30px); font-weight: 500;
+    padding: 10px 0 6px; border-radius: 10px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; line-height: 1;
+  }
+  .num small { font-size: 10px; color: var(--muted); margin-top: 4px; }
+  .num.done { opacity: .28; }
+  .num:active, .tool:active, .new-btn:active { transform: scale(.96); }
+
+  dialog {
+    border: 0; border-radius: 16px; padding: 20px; width: min(320px, 90vw);
+    background: var(--surface); color: var(--ink);
+  }
+  dialog::backdrop { background: rgba(0,0,0,.4); }
+  dialog h2 { margin: 0 0 4px; font-size: 20px; }
+  dialog p { margin: 0 0 16px; color: var(--muted); font-size: 14px; }
+  .choices { display: grid; gap: 8px; }
+  .choices button {
+    border: 0; background: var(--btn); color: var(--ink);
+    font: inherit; font-size: 16px; font-weight: 600;
+    padding: 12px; border-radius: 10px; cursor: pointer; text-transform: capitalize;
+  }
+  .choices button.primary { background: var(--accent); color: var(--accent-ink); }
+  .choices button.ghost { background: transparent; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="meta">
+      <span class="diff" id="diff">easy</span>
+      <span class="timer" id="timer">0:00</span>
+    </div>
+    <button class="new-btn" id="newBtn">New game</button>
+  </header>
+
+  <div class="board" id="board"></div>
+
+  <div class="tools">
+    <button class="tool" id="undoBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+      Undo
+    </button>
+    <button class="tool" id="eraseBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4l10-10a1 1 0 0 1 1.4 0l5.6 5.6a1 1 0 0 1 0 1.4L13 19"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+      Erase
+    </button>
+    <button class="tool" id="notesBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.4 3.6a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>
+      <span>Notes <span class="badge" id="notesBadge">OFF</span></span>
+    </button>
+    <button class="tool" id="hintBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.1 14c.2-1 .7-1.7 1.4-2.5A5.9 5.9 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.4 2.5"/></svg>
+      Hint
+    </button>
+  </div>
+
+  <div class="pad" id="pad"></div>
+</div>
+
+<dialog id="newDialog">
+  <h2>New game</h2>
+  <p>Your current game will be replaced.</p>
+  <div class="choices">
+    <button data-diff="easy">Easy</button>
+    <button data-diff="medium">Medium</button>
+    <button data-diff="hard">Hard</button>
+    <button data-diff="expert">Expert</button>
+    <button class="ghost" data-diff="">Cancel</button>
+  </div>
+</dialog>
+
+<dialog id="winDialog">
+  <h2>Solved</h2>
+  <p id="winText"></p>
+  <div class="choices">
+    <button class="primary" id="winNew">New game</button>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+
+/* ---------- Sudoku engine ---------- */
+const ROW = i => (i / 9) | 0;
+const COL = i => i % 9;
+const BOX = i => ((ROW(i) / 3) | 0) * 3 + ((COL(i) / 3) | 0);
+const PEERS = Array.from({ length: 81 }, (_, i) => {
+  const p = [];
+  for (let j = 0; j < 81; j++)
+    if (j !== i && (ROW(j) === ROW(i) || COL(j) === COL(i) || BOX(j) === BOX(i))) p.push(j);
+  return p;
+});
+const bit = d => 1 << (d - 1);
+const popcount = m => { let n = 0; while (m) { m &= m - 1; n++; } return n; };
+
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Backtracking solver with bitmasks + "fewest candidates first".
+// Counts solutions up to `limit`. If `randomize`, tries digits in random order
+// and leaves the first solution written into g (used to generate full grids).
+function solve(g, limit = 2, randomize = false) {
+  const rows = new Array(9).fill(0), cols = new Array(9).fill(0), boxes = new Array(9).fill(0);
+  for (let i = 0; i < 81; i++) {
+    const d = g[i]; if (!d) continue;
+    const b = bit(d);
+    if ((rows[ROW(i)] | cols[COL(i)] | boxes[BOX(i)]) & b) return 0;
+    rows[ROW(i)] |= b; cols[COL(i)] |= b; boxes[BOX(i)] |= b;
+  }
+  let count = 0;
+  function rec() {
+    let best = -1, bestMask = 0, bestN = 10;
+    for (let i = 0; i < 81; i++) {
+      if (g[i]) continue;
+      const m = ~(rows[ROW(i)] | cols[COL(i)] | boxes[BOX(i)]) & 0x1ff;
+      const n = popcount(m);
+      if (n === 0) return false;
+      if (n < bestN) { best = i; bestMask = m; bestN = n; if (n === 1) break; }
+    }
+    if (best === -1) { count++; return count >= limit; }
+    const digits = [];
+    for (let d = 1; d <= 9; d++) if (bestMask & bit(d)) digits.push(d);
+    if (randomize) shuffle(digits);
+    const r = ROW(best), c = COL(best), x = BOX(best);
+    for (const d of digits) {
+      const b = bit(d);
+      g[best] = d; rows[r] |= b; cols[c] |= b; boxes[x] |= b;
+      if (rec()) return true;
+      g[best] = 0; rows[r] &= ~b; cols[c] &= ~b; boxes[x] &= ~b;
+    }
+    return false;
+  }
+  rec();
+  return count;
+}
+
+const CLUES = { easy: 40, medium: 33, hard: 28, expert: 24 };
+
+function generate(diff) {
+  const solution = new Array(81).fill(0);
+  solve(solution, 1, true);
+  const puzzle = solution.slice();
+  let clues = 81;
+  const target = CLUES[diff] ?? 33;
+  for (const i of shuffle([...Array(81).keys()])) {
+    if (clues <= target) break;
+    const v = puzzle[i];
+    puzzle[i] = 0;
+    if (solve(puzzle.slice(), 2) !== 1) puzzle[i] = v; // keep it: removing breaks uniqueness
+    else clues--;
+  }
+  return { puzzle, solution };
+}
+
+/* ---------- Game state ---------- */
+const KEY = "sudoku-state-v1";
+let S;            // persisted state
+let selected = -1;
+let noteMode = false;
+let history = [];
+
+function newGame(diff) {
+  const { puzzle, solution } = generate(diff);
+  S = {
+    diff, puzzle, solution,
+    values: puzzle.slice(),
+    notes: new Array(81).fill(0),
+    hinted: new Array(81).fill(false),
+    elapsed: 0, won: false, hints: 0,
+  };
+  history = [];
+  selected = -1;
+  save(); render();
+}
+
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY));
+    if (s && s.puzzle && s.puzzle.length === 81) { S = s; return true; }
+  } catch (e) {}
+  return false;
+}
+
+function snapshot() {
+  history.push({ v: S.values.slice(), n: S.notes.slice(), h: S.hinted.slice(), hints: S.hints });
+  if (history.length > 300) history.shift();
+}
+
+function place(d) {
+  if (S.won || selected < 0 || S.puzzle[selected]) return;
+  const i = selected;
+  if (noteMode) {
+    if (S.values[i]) return;
+    snapshot();
+    S.notes[i] ^= bit(d);
+  } else {
+    snapshot();
+    if (S.values[i] === d) { S.values[i] = 0; }
+    else {
+      S.values[i] = d;
+      S.notes[i] = 0;
+      for (const p of PEERS[i]) S.notes[p] &= ~bit(d); // auto-clear that digit from peer notes
+    }
+    S.hinted[i] = false;
+  }
+  afterMove();
+}
+
+function erase() {
+  if (S.won || selected < 0 || S.puzzle[selected]) return;
+  if (!S.values[selected] && !S.notes[selected]) return;
+  snapshot();
+  S.values[selected] = 0; S.notes[selected] = 0; S.hinted[selected] = false;
+  afterMove();
+}
+
+function undo() {
+  if (S.won || !history.length) return;
+  const h = history.pop();
+  S.values = h.v; S.notes = h.n; S.hinted = h.h; S.hints = h.hints;
+  afterMove();
+}
+
+function hint() {
+  if (S.won) return;
+  let i = selected;
+  if (i < 0 || S.puzzle[i] || S.values[i] === S.solution[i]) {
+    const open = [];
+    for (let j = 0; j < 81; j++) if (S.values[j] !== S.solution[j]) open.push(j);
+    if (!open.length) return;
+    i = open[(Math.random() * open.length) | 0];
+    selected = i;
+  }
+  snapshot();
+  const d = S.solution[i];
+  S.values[i] = d; S.notes[i] = 0; S.hinted[i] = true; S.hints++;
+  for (const p of PEERS[i]) S.notes[p] &= ~bit(d);
+  afterMove();
+}
+
+function afterMove() {
+  if (S.values.every((v, i) => v === S.solution[i])) {
+    S.won = true;
+    save(); render();
+    const hintTxt = S.hints ? ` with ${S.hints} hint${S.hints > 1 ? "s" : ""}` : "";
+    $("#winText").textContent = `${cap(S.diff)} in ${fmt(S.elapsed)}${hintTxt}.`;
+    setTimeout(() => $("#winDialog").showModal(), 250);
+    return;
+  }
+  save(); render();
+}
+
+/* ---------- Rendering ---------- */
+const $ = s => document.querySelector(s);
+const cap = s => s[0].toUpperCase() + s.slice(1);
+const fmt = t => {
+  const h = (t / 3600) | 0, m = ((t % 3600) / 60) | 0, s = t % 60;
+  return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s).padStart(2, "0");
+};
+
+const board = $("#board"), pad = $("#pad");
+const cells = [];
+for (let i = 0; i < 81; i++) {
+  const el = document.createElement("div");
+  el.className = "cell";
+  const r = ROW(i), c = COL(i);
+  if (c === 2 || c === 5) el.classList.add("bx");
+  if (r === 2 || r === 5) el.classList.add("by");
+  if (c === 8) el.classList.add("c9");
+  if (r === 8) el.classList.add("r9");
+  el.addEventListener("pointerdown", () => { selected = i; render(); });
+  board.appendChild(el);
+  cells.push(el);
+}
+const nums = [];
+for (let d = 1; d <= 9; d++) {
+  const b = document.createElement("button");
+  b.className = "num";
+  b.innerHTML = `${d}<small></small>`;
+  b.addEventListener("click", () => place(d));
+  pad.appendChild(b);
+  nums.push(b);
+}
+
+function conflicts() {
+  const bad = new Array(81).fill(false);
+  for (let i = 0; i < 81; i++) {
+    const v = S.values[i]; if (!v) continue;
+    for (const p of PEERS[i]) if (S.values[p] === v) { bad[i] = true; break; }
+  }
+  return bad;
+}
+
+function render() {
+  $("#diff").textContent = S.diff;
+  $("#timer").textContent = fmt(S.elapsed);
+  const bad = conflicts();
+  const selVal = selected >= 0 ? S.values[selected] : 0;
+  for (let i = 0; i < 81; i++) {
+    const el = cells[i], v = S.values[i];
+    const isPeer = selected >= 0 && i !== selected && PEERS[selected].includes(i);
+    el.className = el.className.replace(/\b(given|peer|same|selected|conflict|hinted)\b/g, "").trim();
+    if (S.puzzle[i]) el.classList.add("given");
+    if (isPeer) el.classList.add("peer");
+    if (selVal && v === selVal && i !== selected) el.classList.add("same");
+    if (i === selected) el.classList.add("selected");
+    if (bad[i] && !S.puzzle[i]) el.classList.add("conflict");
+    if (S.hinted[i]) el.classList.add("hinted");
+    if (v) el.textContent = v;
+    else if (S.notes[i]) {
+      let h = '<div class="notes">';
+      for (let d = 1; d <= 9; d++)
+        h += `<span class="${d === selVal ? "hl" : ""}">${S.notes[i] & bit(d) ? d : ""}</span>`;
+      el.innerHTML = h + "</div>";
+    } else el.textContent = "";
+  }
+  const counts = new Array(10).fill(0);
+  S.values.forEach(v => counts[v]++);
+  nums.forEach((b, k) => {
+    const left = 9 - counts[k + 1];
+    b.classList.toggle("done", left <= 0);
+    b.querySelector("small").textContent = left > 0 ? left : "";
+  });
+  $("#notesBtn").classList.toggle("on", noteMode);
+  $("#notesBadge").textContent = noteMode ? "ON" : "OFF";
+}
+
+/* ---------- Controls ---------- */
+$("#undoBtn").addEventListener("click", undo);
+$("#eraseBtn").addEventListener("click", erase);
+$("#hintBtn").addEventListener("click", hint);
+$("#notesBtn").addEventListener("click", () => { noteMode = !noteMode; render(); });
+
+const newDialog = $("#newDialog");
+$("#newBtn").addEventListener("click", () => newDialog.showModal());
+newDialog.querySelectorAll("button").forEach(b => b.addEventListener("click", () => {
+  newDialog.close();
+  if (b.dataset.diff) setTimeout(() => newGame(b.dataset.diff), 30);
+}));
+$("#winNew").addEventListener("click", () => { $("#winDialog").close(); newDialog.showModal(); });
+
+document.addEventListener("keydown", e => {
+  if (document.querySelector("dialog[open]")) return;
+  if ((e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); undo(); return; }
+  if (/^[1-9]$/.test(e.key)) { place(+e.key); return; }
+  if (e.key === "Backspace" || e.key === "Delete" || e.key === "0") { erase(); return; }
+  if (e.key === "n" || e.key === "N") { noteMode = !noteMode; render(); return; }
+  const mv = { ArrowUp: -9, ArrowDown: 9, ArrowLeft: -1, ArrowRight: 1 }[e.key];
+  if (mv) {
+    e.preventDefault();
+    if (selected < 0) selected = 40;
+    else {
+      const r = ROW(selected), c = COL(selected);
+      if (mv === -1 && c > 0) selected--;
+      if (mv === 1 && c < 8) selected++;
+      if (mv === -9 && r > 0) selected -= 9;
+      if (mv === 9 && r < 8) selected += 9;
+    }
+    render();
+  }
+});
+
+/* ---------- Timer (pauses when the app is in the background) ---------- */
+setInterval(() => {
+  if (!S || S.won || document.hidden) return;
+  S.elapsed++;
+  $("#timer").textContent = fmt(S.elapsed);
+  if (S.elapsed % 5 === 0) save();
+}, 1000);
+document.addEventListener("visibilitychange", () => { if (document.hidden && S) save(); });
+
+/* ---------- Boot ---------- */
+if (load()) render(); else newGame("easy");
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
+</script>
+</body>
+</html>
